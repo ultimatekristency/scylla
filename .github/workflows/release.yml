@@ -6,16 +6,9 @@ on:
       - "v*"
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        target:
-          - x86_64-unknown-linux-gnu
-          - x86_64-pc-windows-msvc
-
-    runs-on: ${{ matrix.os }}
-
+  build-linux:
+    name: Build Linux Release
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -24,36 +17,70 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Add Rust target
-        run: rustup target add ${{ matrix.target }}
+        run: rustup target add x86_64-unknown-linux-gnu
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Package
         shell: bash
         run: |
-          BIN_NAME="scylla"                       # must match Cargo.toml binary
-          VERSION="${GITHUB_REF_NAME}"            # e.g. v1.0.0
-          TARGET="${{ matrix.target }}"
+          BIN_NAME="scylla"
+          VERSION="${GITHUB_REF_NAME}"
           OUT_DIR="release"
 
           mkdir -p $OUT_DIR
-
-          if [[ "$TARGET" == *windows* ]]; then
-            cp target/$TARGET/release/${BIN_NAME}.exe $OUT_DIR/
-            zip -j $OUT_DIR/${BIN_NAME}-${VERSION}-${TARGET}.zip $OUT_DIR/${BIN_NAME}.exe
-            rm $OUT_DIR/${BIN_NAME}.exe
-          else
-            cp target/$TARGET/release/${BIN_NAME} $OUT_DIR/
-            tar -czf $OUT_DIR/${BIN_NAME}-${VERSION}-${TARGET}.tar.gz -C $OUT_DIR ${BIN_NAME}
-            rm $OUT_DIR/${BIN_NAME}
-          fi
+          cp target/x86_64-unknown-linux-gnu/release/${BIN_NAME} $OUT_DIR/
+          tar -czf $OUT_DIR/${BIN_NAME}-${VERSION}-x86_64-unknown-linux-gnu.tar.gz -C $OUT_DIR ${BIN_NAME}
+          rm $OUT_DIR/${BIN_NAME}
 
       - name: Generate Checksums
         shell: bash
         run: |
           cd release
           sha256sum * > checksums.txt
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    name: Build Windows Release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $BIN_NAME="scylla"
+          $VERSION="${env:GITHUB_REF_NAME}"
+          $OUT_DIR="release"
+
+          New-Item -ItemType Directory -Force -Path $OUT_DIR
+
+          Copy-Item "target\x86_64-pc-windows-msvc\release\$BIN_NAME.exe" "$OUT_DIR\"
+          Compress-Archive -Path "$OUT_DIR\$BIN_NAME.exe" -DestinationPath "$OUT_DIR\$BIN_NAME-$VERSION-x86_64-pc-windows-msvc.zip"
+          Remove-Item "$OUT_DIR\$BIN_NAME.exe"
+
+      - name: Generate Checksums
+        shell: pwsh
+        run: |
+          Set-Location release
+          Get-ChildItem | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash) $($_.Name)" } | Out-File checksums.txt
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
