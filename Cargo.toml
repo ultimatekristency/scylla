@@ -3,8 +3,19 @@ name = "scylla"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
+log = "0.4"
+env_logger = "0.11"
+tokio = { version = "1.40", features = ["full"] }
+tokio-postgres = "0.7"
+postgres-native-tls = "0.5"
+native-tls = "0.2"
 dotenvy = "0.15"
-serde = { version = "1", features = ["derive"] }
+self_update = "0.41"
+deadpool-postgres = "0.14"
+isahc = "1.7"
+backoff = { version = "0.4", features = ["futures", "tokio"] }
+serde = { version = "1.0", features = ["derive"] }
 config = "0.14"
-self_update = "0.42.0"
+chrono = "0.4"
