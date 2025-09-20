@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-linux:
-    name: Build Linux Release
+    name: Build Linux
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -16,7 +16,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Rust target
+      - name: Add Linux target
         run: rustup target add x86_64-unknown-linux-gnu
 
       - name: Build
@@ -28,7 +28,6 @@ jobs:
           BIN_NAME="scylla"
           VERSION="${GITHUB_REF_NAME}"
           OUT_DIR="release"
-
           mkdir -p $OUT_DIR
           cp target/x86_64-unknown-linux-gnu/release/${BIN_NAME} $OUT_DIR/
           tar -czf $OUT_DIR/${BIN_NAME}-${VERSION}-x86_64-unknown-linux-gnu.tar.gz -C $OUT_DIR ${BIN_NAME}
@@ -48,7 +47,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-windows:
-    name: Build Windows Release
+    name: Build Windows
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -57,7 +56,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Rust target
+      - name: Add Windows target
         run: rustup target add x86_64-pc-windows-msvc
 
       - name: Build
@@ -66,21 +65,34 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $BIN_NAME="scylla"
-          $VERSION="${env:GITHUB_REF_NAME}"
-          $OUT_DIR="release"
+          $BinName = "scylla"
+          $Version = "${env:GITHUB_REF_NAME}"
+          $OutDir = "release"
+          New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
-          New-Item -ItemType Directory -Force -Path $OUT_DIR
+          # Copy binary to release folder
+          Copy-Item "target/x86_64-pc-windows-msvc/release/$BinName.exe" $OutDir/
 
-          Copy-Item "target\x86_64-pc-windows-msvc\release\$BIN_NAME.exe" "$OUT_DIR\"
-          Compress-Archive -Path "$OUT_DIR\$BIN_NAME.exe" -DestinationPath "$OUT_DIR\$BIN_NAME-$VERSION-x86_64-pc-windows-msvc.zip"
-          Remove-Item "$OUT_DIR\$BIN_NAME.exe"
+          # Zip binary
+          Compress-Archive -Path "$OutDir\$BinName.exe" -DestinationPath "$OutDir\$BinName-$Version-x86_64-pc-windows-msvc.zip" -Force
+
+          # Remove copied binary
+          Remove-Item "$OutDir\$BinName.exe"
 
       - name: Generate Checksums
         shell: pwsh
         run: |
           Set-Location release
-          Get-ChildItem | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash) $($_.Name)" } | Out-File checksums.txt
+          $ChecksumFile = "checksums.txt"
+
+          # Wait to ensure no files are locked
+          Start-Sleep -Seconds 1
+
+          # Compute SHA256 for all files except the checksum file itself
+          Get-ChildItem * | Where-Object { $_.Name -ne $ChecksumFile } |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash) $($_.Name)" } |
+            Set-Content -Path $ChecksumFile
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
